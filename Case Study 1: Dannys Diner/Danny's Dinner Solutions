@@ -1,0 +1,172 @@
+Q1.  What is the total amount each customer spent at the restaurant?
+Solution:
+  select 
+  a.customer_id,
+  sum(Price) as Total_Sales
+  from dannys_diner.sales as a join dannys_diner.menu as b
+  on a.product_id = b.product_id 
+  group by a.customer_id
+  order by a.customer_id;
+  ------------------------------------------------------------------------------------------------
+  Q2. How many days has each customer visited the restaurant?
+  solution:
+    select
+    customer_id,
+    count(distinct order_date) as visited_count
+    from dannys_diner.sales
+    group by customer_id
+  order by customer_id;
+---------------------------------------------------------------------------------------------------
+Q3. What was the first item from the menu purchased by each customer?
+solution:
+    with orders_cte as (
+select 
+    a.customer_id,
+    a.order_date,
+    b.product_name,
+    dense_rank() over (partition by a.customer_id order by a.order_date) as rank
+    from dannys_diner.sales as a
+    join dannys_diner.menu as b
+    on a.product_id = b.product_id
+) 
+
+select customer_id, product_name
+from orders_cte
+where rank =1
+group by customer_id,product_name
+order by customer_id
+------------------------------------------------------------------------------------------------------
+Q 4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+solution:
+  select (count(a.product_id)) as most_purchased,
+  product_name
+  from dannys_diner.sales as a
+  join dannys_diner.menu as b
+  on a.product_id = b.product_id
+  group by a.product_id, product_name
+  order by most_purchased desc limit 1;
+---------------------------------------------------------------------------------------------------------
+Q5. Which item was the most popular for each customer?
+solution:
+    WITH popular_cte AS
+(
+ SELECT a.customer_id, b.product_name, 
+  COUNT(b.product_id) AS order_count,
+  DENSE_RANK() OVER(PARTITION BY a.customer_id
+  ORDER BY COUNT(a.customer_id) DESC) AS rank
+FROM dannys_diner.menu AS b
+JOIN dannys_diner.sales AS a
+ ON b.product_id = a.product_id
+GROUP BY a.customer_id, b.product_name
+)
+SELECT customer_id, product_name, order_count
+FROM popular_cte 
+WHERE rank = 1;
+--------------------------------------------------------------------------------------------------------------
+Q6. Which item was purchased first by the customer after they became a member?
+solution:
+  with members_cte as (
+  select a.customer_id,
+    b.join_date,
+    a.order_date,
+    a.product_id,
+    dense_rank() over(
+    partition by a.customer_id order by a.order_date) as rank
+    from dannys_diner.sales as a
+    join dannys_diner.members as b
+    on a.customer_id = b.customer_id
+    where a.order_date >= b.join_date
+)
+
+  select a.customer_id,
+    a.order_date,
+    c.product_name
+  from members_cte as a
+  join dannys_diner.menu as c
+  on a.product_id = c.product_id
+  where rank = 1
+  order by a.customer_id;
+---------------------------------------------------------------------------------------------------------------
+Q7. Which item was purchased just before the customer became a member?
+solution:
+  with members_cte as (
+  select a.customer_id,
+    b.join_date,
+    a.order_date,
+    a.product_id,
+    dense_rank() over(
+    partition by a.customer_id order by a.order_date) as rank
+   from dannys_diner.sales as a
+   join dannys_diner.members as b
+   on a.customer_id = b.customer_id
+   where a.order_date < b.join_date
+)
+
+  select a.customer_id,
+    a.order_date,
+    c.product_name
+  from members_cte as a
+  join dannys_diner.menu as c
+  on a.product_id = c.product_id
+  where rank = 1
+  order by a.customer_id;
+--------------------------------------------------------------------------------------------------
+Q8. What is the total items and amount spent for each member before they became a member?
+solution:
+  select a.customer_id,
+  count(distinct a.product_id) as total_items,
+  sum(c.price) as total_amount_spent
+  from dannys_diner.sales as a
+  join dannys_diner.members as b
+  on a.customer_id = b.customer_id
+  join dannys_diner.menu as c
+  on a.product_id = c.product_id
+  where a.order_date < b.join_date
+  group by a.customer_id;
+-----------------------------------------------------------------------------------------------------
+Q9. If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+solution:
+  with points_cte as (
+    select * ,
+    case 
+    when product_id = 1 then price * 20
+    else price * 10
+    end as points
+    from dannys_diner.menu
+)
+
+  select a.customer_id,
+  sum(p.points) as total_points
+  from points_cte as p
+  join dannys_diner.sales as a
+  on p.product_id = a.product_id
+  group by a.customer_id
+  order by a.customer_id;
+---------------------------------------------------------------------------------------------------------------
+Q10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
+solution:
+    with date_cte as (
+     select *,
+      ADDDATE(DAY,6,join_date) as valid_date,
+      Eomonth('2021-01-31') as last_date
+      from dannys_diner.members
+)
+  select a.customer_id,
+    a.order_date,
+    a.join_date,
+    a.valid_date,
+    a.last_date,
+    b.product_name,
+    b.price,
+  sum(case
+    when b.product_name = 'sushi' then 2 * 10 * b.price
+    when c.order_date between a.join_date and a.valid_date then 2 * 10 * b.price
+    else 10 * b.price
+    end) as points
+  from date_cte as a
+  join dannys_diner.sales as c
+  on a.customer_id = c.customer_id
+  join dannys_diner.menu as b
+  on c.product_id = b.product_id
+  where c.order_date < a.last_date
+  group by a.customer_id,a.order_date,a.join_date,a.valid_date,a.last_date,b.product_name,b.price
