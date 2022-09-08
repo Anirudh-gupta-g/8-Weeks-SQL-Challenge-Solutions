@@ -1,0 +1,85 @@
+Before starting the analytics we must clean the customer_orders and runner_orders
+for customer_orders table I created a new table called customer_orders1 and cleaned it to avoid any data loss of the original data
+
+Creating the new table:
+  drop table if exists customer_orders1;
+  create table customer_orders1 as
+  (select order_id, customer_id, pizza_id, exclusions, extras, order_time 
+  from customer_orders);
+
+Cleaning the data:
+  update customer_orders1
+  set 
+  exclusions = case exclusions when 'null' then null else exclusions end,
+  extras = case extras when 'null' then null else extras end;
+  
+For runner_orders table, I followed the same process
+
+Creating new table:
+ 
+drop table if exists runner_orders1;
+create table runner_orders1 as 
+(select order_id, runner_id, pickup_time,
+case
+ when distance like '%km' then trim('km' from distance)
+ else distance 
+end as distance,
+case
+ when duration like '%minutes' then trim('minutes' from duration)
+ when duration like '%mins' then trim('mins' from duration)
+ when duration like '%minute' then trim('minute' from duration)
+ else duration
+end as duration, cancellation 
+from runner_orders);
+
+Cleaning the Data:
+
+update runner_orders1
+set 
+pickup_time = case pickup_time when 'null' then null else pickup_time end,
+distance = case distance when 'null' then null else distance end,
+duration = case duration when 'null' then null else duration end,
+cancellation = case cancellation when 'null' then null else cancellation end;
+
+And it seems we have to convert the datatypes of pickup_time,distance and duration
+
+Alter table runner_orders1 alter column pickup_time type timestaamp without time zone using pickup_time :: time stamp without time zone,
+alter column distance type decimal using distance :: decimal,
+alter column duration type integer using duration :: integer;
+
+A.Pizza Metrics
+-----------------------------------------------------------------------------------------------------------------------------
+
+1.How many pizzas were ordered?
+Ans: select count(pizza_id) as PizzaOrdered 
+from customer_orders1;
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+2.How many unique customer orders were made?
+Ans: select count (distinct order_id) as unique_customer_orders
+from customer_orders1;
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+3. How many successful orders were delivered by each runner?
+Ans: select runner_id,
+count(order_id) as SuccesfulOrders
+from runner_orders1
+where distance is not null
+group by runner_id;
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+4.Q4. How many of each type of pizza was delivered?
+Ans : select pn.pizza_name,
+count(co.pizza_id) as pizza_delivered
+from customer_orders1 as co inner join runner_orders1 as ro
+on co.order_id = ro.order_id
+inner join pizza_names as pn
+on pn.pizza_id = co.pizza_id
+where ro.distance is not null
+group by co.pizza_id;
+
+-----------------------------------------------------------------------------------------------------------------------------
+
